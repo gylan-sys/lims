@@ -1,0 +1,5 @@
+{
+  "name": "Medialab",
+  "description": "Laboratory Information Management System with dashboard, lab modules, stock management, and user access control.",
+  "requestFramePermissions": ["camera"]
+}
