@@ -252,7 +252,7 @@ async function startServer() {
       });
     } catch (error) {
       console.error('Get stocks error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Internal server error' });
     }
   });
 
@@ -279,21 +279,35 @@ async function startServer() {
 
   app.post('/api/settings', async (req, res) => {
     try {
-      const updates = req.body;
+      const { updates, requesterUid } = req.body;
+      
+      // Security Check: Only admins can change settings
+      if (requesterUid) {
+        const admin = await User.findByPk(requesterUid);
+        if (!admin || admin.get('role') !== 'admin') {
+          return res.status(403).json({ error: 'Unauthorized. Admin access required.' });
+        }
+      } else {
+        return res.status(401).json({ error: 'Authentication required.' });
+      }
+
       for (const [key, value] of Object.entries(updates)) {
         const valStr = typeof value === 'string' ? value : JSON.stringify(value);
         await AppSettings.upsert({ key, value: valStr });
       }
       res.json({ success: true });
     } catch (error) {
-      res.status(500).json({ error: 'Internal server error' });
+      console.error('Settings update error:', error);
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Internal server error' });
     }
   });
 
   // Auth Sync
   app.post('/api/auth/sync', async (req, res) => {
     try {
-      const { uid, email, displayName, role, permissions } = req.body;
+      const { uid, email, displayName, role, permissions, requesterUid } = req.body;
+      console.log(`Syncing user: ${email} (UID: ${uid}), Requested by: ${requesterUid}`);
+      
       let user = await User.findByPk(uid);
       if (!user) {
         // Check if user was pre-created by email
@@ -322,12 +336,24 @@ async function startServer() {
       res.json(userData);
     } catch (error) {
       console.error('Auth sync error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Internal server error' });
     }
   });
 
   app.get('/api/users', async (req, res) => {
     try {
+      const { requesterUid } = req.query;
+      
+      // Security Check: Only admins can list users
+      if (requesterUid) {
+        const admin = await User.findByPk(requesterUid as string);
+        if (!admin || admin.get('role') !== 'admin') {
+          return res.status(403).json({ error: 'Unauthorized. Admin access required.' });
+        }
+      } else {
+        return res.status(401).json({ error: 'Authentication required.' });
+      }
+
       const users = await User.findAll();
       res.json(users.map(u => {
         const data = u.get() as any;
@@ -342,13 +368,24 @@ async function startServer() {
       }));
     } catch (error) {
       console.error('Get users error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Internal server error' });
     }
   });
 
   app.post('/api/users', async (req, res) => {
     try {
-      const { email, displayName, role, permissions } = req.body;
+      const { email, displayName, role, permissions, requesterUid } = req.body;
+      
+      // Security Check: Only admins can create users
+      if (requesterUid) {
+        const admin = await User.findByPk(requesterUid);
+        if (!admin || admin.get('role') !== 'admin') {
+          return res.status(403).json({ error: 'Unauthorized. Admin access required.' });
+        }
+      } else {
+        return res.status(401).json({ error: 'Authentication required.' });
+      }
+
       const user = await User.create({ 
         uid: `pending_${Date.now()}`, 
         email, 
@@ -366,6 +403,23 @@ async function startServer() {
 
   app.delete('/api/users/:uid', async (req, res) => {
     try {
+      const { requesterUid } = req.query;
+      
+      // Security Check: Only admins can delete users
+      if (requesterUid) {
+        const admin = await User.findByPk(requesterUid as string);
+        if (!admin || admin.get('role') !== 'admin') {
+          return res.status(403).json({ error: 'Unauthorized. Admin access required.' });
+        }
+      } else {
+        return res.status(401).json({ error: 'Authentication required.' });
+      }
+
+      // Prevent self-deletion
+      if (req.params.uid === requesterUid) {
+        return res.status(400).json({ error: 'Cannot delete your own account.' });
+      }
+
       await User.destroy({ where: { uid: req.params.uid } });
       res.json({ success: true });
     } catch (error) {
@@ -375,18 +429,40 @@ async function startServer() {
 
   app.put('/api/users/:uid/role', async (req, res) => {
     try {
-      const { role } = req.body;
+      const { role, requesterUid } = req.body;
+      
+      // Security Check: Only admins can update roles
+      if (requesterUid) {
+        const admin = await User.findByPk(requesterUid);
+        if (!admin || admin.get('role') !== 'admin') {
+          return res.status(403).json({ error: 'Unauthorized. Admin access required.' });
+        }
+      } else {
+        return res.status(401).json({ error: 'Authentication required.' });
+      }
+
       await User.update({ role }, { where: { uid: req.params.uid } });
       res.json({ success: true });
     } catch (error) {
       console.error('Update user role error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Internal server error' });
     }
   });
 
   app.put('/api/users/:uid/permissions', async (req, res) => {
     try {
-      const { permissions } = req.body;
+      const { permissions, requesterUid } = req.body;
+      
+      // Security Check: Only admins can update permissions
+      if (requesterUid) {
+        const admin = await User.findByPk(requesterUid);
+        if (!admin || admin.get('role') !== 'admin') {
+          return res.status(403).json({ error: 'Unauthorized. Admin access required.' });
+        }
+      } else {
+        return res.status(401).json({ error: 'Authentication required.' });
+      }
+
       await User.update({ 
         permissions: permissions ? JSON.stringify(permissions) : null 
       }, { where: { uid: req.params.uid } });
@@ -421,7 +497,7 @@ async function startServer() {
       });
     } catch (error) {
       console.error('Get requisitions error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Internal server error' });
     }
   });
 
@@ -431,7 +507,7 @@ async function startServer() {
       res.json(reqItem);
     } catch (error) {
       console.error('Create requisition error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Internal server error' });
     }
   });
 
@@ -463,7 +539,7 @@ async function startServer() {
       res.json({ success: true });
     } catch (error) {
       console.error('Update requisition status error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Internal server error' });
     }
   });
 
@@ -520,7 +596,7 @@ async function startServer() {
       res.json({ success: true });
     } catch (error) {
       console.error('Receive requisition error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Internal server error' });
     }
   });
 
@@ -540,7 +616,7 @@ async function startServer() {
       res.json({ success: true });
     } catch (error) {
       console.error('Lab reject requisition error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Internal server error' });
     }
   });
 
@@ -683,6 +759,16 @@ async function startServer() {
       res.json(item);
     } catch (error) {
       console.error('Create stocks error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  app.post('/api/stocks/bulk', async (req, res) => {
+    try {
+      const items = await StockItem.bulkCreate(req.body);
+      res.json(items);
+    } catch (error) {
+      console.error('Bulk create stocks error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });

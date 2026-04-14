@@ -10,10 +10,15 @@ import {
   Package, 
   Warehouse, 
   Settings, 
+  Settings as SettingsIcon,
   LogOut, 
   Menu, 
   X,
   User as UserIcon,
+  Users,
+  Layout as LayoutIcon,
+  Palette,
+  ShieldAlert,
   Plus,
   Search,
   Filter,
@@ -27,6 +32,7 @@ import {
   Upload,
   FileSpreadsheet,
   FileText,
+  FileUp,
   ChevronDown,
   ChevronRight,
   History,
@@ -63,7 +69,7 @@ import {
 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import QRCode from 'qrcode';
-import { Html5QrcodeScanner } from 'html5-qrcode';
+import { Html5QrcodeScanner, Html5Qrcode } from 'html5-qrcode';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword } from 'firebase/auth';
 import { initializeApp, deleteApp, getApps } from 'firebase/app';
@@ -226,10 +232,43 @@ interface ReagentTransfer {
   createdAt: string;
 }
 
+interface AppNotification {
+  id: string;
+  title: string;
+  message: string;
+  type: 'info' | 'warning' | 'error' | 'success';
+  timestamp: Date;
+  read: boolean;
+  link?: string;
+}
+
 // --- QR Code Components ---
 
 const BulkQRCodeModal = ({ items, onClose }: { items: StockItem[], onClose: () => void }) => {
   const [isPrinting, setIsPrinting] = useState(false);
+  const [qrUrls, setQrUrls] = useState<Record<number, string>>({});
+
+  useEffect(() => {
+    const generateQRs = async () => {
+      const urls: Record<number, string> = {};
+      for (const item of items) {
+        const qrData = JSON.stringify({
+          id: item.id,
+          name: item.name,
+          lot: item.lotNumber,
+          expiry: item.expiryDate
+        });
+        try {
+          const url = await QRCode.toDataURL(qrData, { margin: 1, width: 300 });
+          urls[item.id] = url;
+        } catch (err) {
+          console.error('QR Generation error:', err);
+        }
+      }
+      setQrUrls(urls);
+    };
+    generateQRs();
+  }, [items]);
 
   const handlePrint = async () => {
     setIsPrinting(true);
@@ -253,16 +292,15 @@ const BulkQRCodeModal = ({ items, onClose }: { items: StockItem[], onClose: () =
               margin: 0; 
               padding: 0;
               background: white;
+              font-family: 'Inter', -apple-system, sans-serif;
             }
             .label-page {
               width: 70mm; 
               height: 50mm; 
-              padding: 4mm; 
+              padding: 5mm; 
               display: flex; 
               align-items: center; 
-              justify-content: center;
-              gap: 5mm; 
-              font-family: 'Inter', sans-serif; 
+              gap: 6mm; 
               overflow: hidden;
               page-break-after: always;
             }
@@ -270,9 +308,12 @@ const BulkQRCodeModal = ({ items, onClose }: { items: StockItem[], onClose: () =
               page-break-after: auto;
             }
             .qr-container { 
-              flex-shrink: 0; 
               width: 35mm;
               height: 35mm;
+              flex-shrink: 0;
+              display: flex;
+              align-items: center;
+              justify-content: center;
             }
             .qr-container img { 
               width: 100%; 
@@ -280,48 +321,36 @@ const BulkQRCodeModal = ({ items, onClose }: { items: StockItem[], onClose: () =
               display: block; 
             }
             .info-container { 
-              flex-grow: 1; 
+              flex: 1;
               display: flex; 
               flex-direction: column; 
               justify-content: center; 
               min-width: 0;
-              gap: 1.5mm;
             }
-            .label {
-              font-size: 6pt;
-              color: #666;
-              font-weight: bold;
-              text-transform: uppercase;
-              letter-spacing: 0.5px;
-            }
-            .name-value {
-              font-weight: 800;
-              font-size: 11pt;
+            .item-name {
+              font-weight: 900;
+              font-size: 14pt;
               line-height: 1.1;
               color: black;
+              margin-bottom: 2mm;
+              word-break: break-word;
               display: -webkit-box;
               -webkit-line-clamp: 2;
               -webkit-box-orient: vertical;
               overflow: hidden;
+            }
+            .item-detail {
+              font-weight: 700;
+              font-size: 10pt;
+              color: #333;
               margin-bottom: 1mm;
             }
-            .code-value { 
-              font-weight: 900; 
-              font-size: 12pt; 
-              line-height: 1; 
+            .item-exp {
+              font-weight: 900;
+              font-size: 11pt;
               color: black;
-              word-break: break-all;
-            }
-            .exp-container {
-              margin-top: 1.5mm;
-              padding-top: 1.5mm;
-              border-top: 0.4mm solid #000;
-            }
-            .exp-value { 
-              font-size: 10pt; 
-              color: black; 
-              font-weight: 800;
-              font-family: 'JetBrains Mono', monospace;
+              margin-top: 2mm;
+              font-family: monospace;
             }
           </style>
         </head>
@@ -329,38 +358,21 @@ const BulkQRCodeModal = ({ items, onClose }: { items: StockItem[], onClose: () =
     `;
 
     for (const item of items) {
-      const qrData = JSON.stringify({
-        id: item.id,
-        name: item.name,
-        lot: item.lotNumber,
-        expiry: item.expiryDate
-      });
-
-      try {
-        const url = await QRCode.toDataURL(qrData, { margin: 0, width: 300 });
+      const url = qrUrls[item.id];
+      if (url) {
         html += `
           <div class="label-page">
             <div class="qr-container">
               <img src="${url}" />
             </div>
             <div class="info-container">
-              <div>
-                <div class="label">NAMA BAHAN:</div>
-                <div class="name-value">${item.name}</div>
-              </div>
-              <div>
-                <div class="label">KODE BAHAN:</div>
-                <div class="code-value">${item.materialCode || '-'}</div>
-              </div>
-              <div class="exp-container">
-                <div class="label">EXPIRED DATE:</div>
-                <div class="exp-value">${item.expiryDate || '-'}</div>
-              </div>
+              <div class="item-name">${item.name}</div>
+              <div class="item-detail">Lot: ${item.lotNumber || '-'}</div>
+              <div class="item-detail">Code: ${item.materialCode || '-'}</div>
+              <div class="item-exp">EXP: ${item.expiryDate || '-'}</div>
             </div>
           </div>
         `;
-      } catch (err) {
-        console.error('QR Generation error:', err);
       }
     }
 
@@ -433,7 +445,7 @@ const BulkQRCodeModal = ({ items, onClose }: { items: StockItem[], onClose: () =
             </button>
             <button 
               onClick={handlePrint}
-              disabled={isPrinting}
+              disabled={isPrinting || Object.keys(qrUrls).length < items.length}
               className="flex-[2] bg-blue-600 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 disabled:opacity-50"
             >
               {isPrinting ? (
@@ -470,7 +482,6 @@ const QRCodeModal = ({ item, onClose }: { item: StockItem, onClose: () => void }
         <head>
           <title>Print QR Code - ${item.name}</title>
           <style>
-            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800;900&family=JetBrains+Mono:wght@700&display=swap');
             @page { 
               size: 70mm 50mm; 
               margin: 0; 
@@ -478,148 +489,76 @@ const QRCodeModal = ({ item, onClose }: { item: StockItem, onClose: () => void }
             * { -webkit-print-color-adjust: exact; box-sizing: border-box; }
             body { 
               margin: 0; 
-              padding: 3mm; 
-              font-family: 'Inter', sans-serif; 
+              padding: 0;
+              background: white;
+              font-family: 'Inter', -apple-system, sans-serif;
+            }
+            .label-page {
               width: 70mm; 
               height: 50mm; 
-              background: white;
+              padding: 5mm; 
+              display: flex; 
+              align-items: center; 
+              gap: 6mm; 
               overflow: hidden;
             }
-            .label-border {
-              border: 0.5mm solid black;
-              width: 100%;
-              height: 100%;
-              display: flex;
-              flex-direction: column;
-              padding: 1.5mm;
-              position: relative;
-            }
-            .header {
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-              border-bottom: 0.3mm solid black;
-              padding-bottom: 1mm;
-              margin-bottom: 1.5mm;
-            }
-            .header-title {
-              font-size: 6pt;
-              font-weight: 900;
-              letter-spacing: 0.5px;
-              text-transform: uppercase;
-            }
-            .main-content {
-              display: flex;
-              flex: 1;
-              gap: 3mm;
-              min-height: 0;
-            }
-            .qr-side {
+            .qr-container { 
+              width: 35mm;
+              height: 35mm;
               flex-shrink: 0;
-              width: 28mm;
-              height: 28mm;
-              border: 0.2mm solid #eee;
               display: flex;
               align-items: center;
               justify-content: center;
             }
-            .qr-side img {
-              width: 100%;
-              height: 100%;
-              object-fit: contain;
+            .qr-container img { 
+              width: 100%; 
+              height: 100%; 
+              display: block; 
             }
-            .info-side {
+            .info-container { 
               flex: 1;
-              display: flex;
-              flex-direction: column;
+              display: flex; 
+              flex-direction: column; 
+              justify-content: center; 
               min-width: 0;
-              gap: 1.5mm;
             }
-            .field {
-              display: flex;
-              flex-direction: column;
-            }
-            .field-label {
-              font-size: 5pt;
-              font-weight: 700;
-              color: #555;
-              text-transform: uppercase;
-              margin-bottom: 0.2mm;
-            }
-            .field-value {
-              font-size: 8pt;
-              font-weight: 800;
-              color: black;
-              line-height: 1.1;
-              word-break: break-word;
-            }
-            .material-code {
-              font-family: 'JetBrains Mono', monospace;
-              font-size: 9pt;
-              font-weight: 700;
-              background: #f0f0f0;
-              padding: 0.5mm 1mm;
-              border-radius: 0.5mm;
-              display: inline-block;
-            }
-            .footer {
-              margin-top: auto;
-              background: black;
-              color: white;
-              padding: 1.5mm;
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-              border-radius: 0.5mm;
-            }
-            .footer-label {
-              font-size: 6pt;
-              font-weight: 700;
-              text-transform: uppercase;
-            }
-            .footer-value {
-              font-size: 10pt;
+            .item-name {
               font-weight: 900;
-              font-family: 'JetBrains Mono', monospace;
-            }
-            .name-clamp {
+              font-size: 14pt;
+              line-height: 1.1;
+              color: black;
+              margin-bottom: 2mm;
+              word-break: break-word;
               display: -webkit-box;
               -webkit-line-clamp: 2;
               -webkit-box-orient: vertical;
               overflow: hidden;
             }
+            .item-detail {
+              font-weight: 700;
+              font-size: 10pt;
+              color: #333;
+              margin-bottom: 1mm;
+            }
+            .item-exp {
+              font-weight: 900;
+              font-size: 11pt;
+              color: black;
+              margin-top: 2mm;
+              font-family: monospace;
+            }
           </style>
         </head>
         <body onload="setTimeout(() => { window.print(); window.close(); }, 300)">
-          <div class="label-border">
-            <div class="header">
-              <div class="header-title">LABINFO LIMS INVENTORY</div>
-              <div style="font-size: 5pt; font-weight: 700;">ID: ${item.id}</div>
+          <div class="label-page">
+            <div class="qr-container">
+              <img src="${url}" />
             </div>
-            
-            <div class="main-content">
-              <div class="qr-side">
-                <img src="${url}" />
-              </div>
-              <div class="info-side">
-                <div class="field">
-                  <div class="field-label">NAMA BAHAN</div>
-                  <div class="field-value name-clamp">${item.name}</div>
-                </div>
-                <div class="field">
-                  <div class="field-label">KODE BAHAN</div>
-                  <div class="field-value material-code">${item.materialCode || '-'}</div>
-                </div>
-                <div class="field">
-                  <div class="field-label">LOT NUMBER</div>
-                  <div class="field-value" style="font-size: 7pt;">${item.lotNumber || '-'}</div>
-                </div>
-              </div>
-            </div>
-
-            <div class="footer">
-              <div class="footer-label">EXPIRED DATE</div>
-              <div class="footer-value">${item.expiryDate || '-'}</div>
+            <div class="info-container">
+              <div class="item-name">${item.name}</div>
+              <div class="item-detail">Lot: ${item.lotNumber || '-'}</div>
+              <div class="item-detail">Code: ${item.materialCode || '-'}</div>
+              <div class="item-exp">EXP: ${item.expiryDate || '-'}</div>
             </div>
           </div>
         </body>
@@ -686,27 +625,60 @@ const QRCodeModal = ({ item, onClose }: { item: StockItem, onClose: () => void }
 };
 
 const QRScannerModal = ({ onScan, onClose }: { onScan: (data: any) => void, onClose: () => void }) => {
-  useEffect(() => {
-    const scanner = new Html5QrcodeScanner(
-      "reader",
-      { fps: 10, qrbox: { width: 250, height: 250 } },
-      /* verbose= */ false
-    );
+  const [error, setError] = useState<string | null>(null);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
 
-    scanner.render((decodedText) => {
+  useEffect(() => {
+    const startScanner = async () => {
       try {
-        const data = JSON.parse(decodedText);
-        onScan(data);
-        scanner.clear();
-      } catch (e) {
-        console.error("Invalid QR Code data", e);
+        const html5QrCode = new Html5Qrcode("reader");
+        scannerRef.current = html5QrCode;
+
+        const config = { 
+          fps: 10, 
+          qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+            const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+            const qrboxSize = Math.floor(minEdge * 0.7);
+            return { width: qrboxSize, height: qrboxSize };
+          }
+        };
+
+        await html5QrCode.start(
+          { facingMode: "environment" },
+          config,
+          (decodedText) => {
+            try {
+              const data = JSON.parse(decodedText);
+              onScan(data);
+              html5QrCode.stop().catch(err => console.error("Failed to stop scanner", err));
+            } catch (e) {
+              console.error("Invalid QR Code data", e);
+            }
+          },
+          (errorMessage) => {
+            // Silently ignore scan errors (they happen every frame)
+          }
+        );
+      } catch (err: any) {
+        console.error("Error starting camera:", err);
+        let userMessage = "Gagal mengakses kamera.";
+        if (err.name === 'NotAllowedError') {
+          userMessage = "Izin kamera ditolak. Silakan berikan izin akses kamera di pengaturan browser Anda.";
+        } else if (err.name === 'NotFoundError') {
+          userMessage = "Kamera tidak ditemukan pada perangkat ini.";
+        } else if (err.name === 'NotReadableError' || err.message?.includes('video source')) {
+          userMessage = "Kamera sedang digunakan oleh aplikasi lain atau tidak dapat dimulai. Silakan tutup aplikasi lain yang menggunakan kamera dan coba lagi.";
+        }
+        setError(userMessage);
       }
-    }, (error) => {
-      // console.warn(error);
-    });
+    };
+
+    startScanner();
 
     return () => {
-      scanner.clear().catch(err => console.error("Failed to clear scanner", err));
+      if (scannerRef.current && scannerRef.current.isScanning) {
+        scannerRef.current.stop().catch(err => console.error("Failed to stop scanner on cleanup", err));
+      }
     };
   }, [onScan]);
 
@@ -736,7 +708,32 @@ const QRScannerModal = ({ onScan, onClose }: { onScan: (data: any) => void, onCl
               </div>
             </div>
           )}
-          <div id="reader" className="overflow-hidden rounded-2xl border-2 border-dashed border-slate-200"></div>
+
+          {error && (
+            <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
+              <AlertTriangle className="text-red-600 shrink-0" size={20} />
+              <div className="text-sm text-red-800">
+                <p className="font-bold">Error Kamera</p>
+                <p>{error}</p>
+                <button 
+                  onClick={() => window.location.reload()}
+                  className="mt-2 text-red-700 font-bold underline"
+                >
+                  Muat Ulang Halaman
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div id="reader" className="overflow-hidden rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 aspect-square flex items-center justify-center">
+            {!error && !scannerRef.current?.isScanning && (
+              <div className="text-slate-400 flex flex-col items-center gap-2">
+                <RefreshCw className="animate-spin" size={24} />
+                <p className="text-xs">Menghubungkan ke kamera...</p>
+              </div>
+            )}
+          </div>
+          
           <p className="mt-4 text-center text-sm text-slate-500">
             Arahkan kamera ke QR Code yang ada pada kemasan bahan.
           </p>
@@ -799,6 +796,7 @@ const PhotoCaptureModal = ({ onClose, onCapture }: { onClose: () => void; onCapt
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const startCamera = async () => {
     try {
@@ -835,7 +833,7 @@ const PhotoCaptureModal = ({ onClose, onCapture }: { onClose: () => void; onCapt
       const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/jpeg');
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8); // Compress slightly
         setCapturedPhoto(dataUrl);
         stopCamera();
       }
@@ -853,12 +851,26 @@ const PhotoCaptureModal = ({ onClose, onCapture }: { onClose: () => void; onCapt
     }
   };
 
+  const handleUsePhoto = async () => {
+    if (capturedPhoto) {
+      setIsProcessing(true);
+      try {
+        await onCapture(capturedPhoto);
+      } catch (err) {
+        console.error('Error in onCapture:', err);
+        setError('Gagal memproses foto. Silakan coba lagi.');
+        setIsProcessing(false);
+      }
+    }
+  };
+
   useEffect(() => {
     return () => stopCamera();
   }, [stream]);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
+      <canvas ref={canvasRef} className="hidden" />
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -924,17 +936,27 @@ const PhotoCaptureModal = ({ onClose, onCapture }: { onClose: () => void; onCapt
                     setCapturedPhoto(null);
                     startCamera();
                   }}
-                  className="flex-1 py-3 px-4 border border-slate-200 text-slate-600 font-bold rounded-2xl hover:bg-slate-50 transition-all"
+                  disabled={isProcessing}
+                  className="flex-1 py-3 px-4 border border-slate-200 text-slate-600 font-bold rounded-2xl hover:bg-slate-50 transition-all disabled:opacity-50"
                 >
                   Ulangi
                 </button>
                 <button 
-                  onClick={() => onCapture(capturedPhoto)}
-                  className="flex-1 py-3 px-4 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-200"
+                  onClick={handleUsePhoto}
+                  disabled={isProcessing}
+                  className="flex-1 py-3 px-4 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  Gunakan Foto
+                  {isProcessing ? (
+                    <>
+                      <RefreshCw size={18} className="animate-spin" />
+                      Memproses...
+                    </>
+                  ) : (
+                    'Gunakan Foto'
+                  )}
                 </button>
               </div>
+              {error && <p className="text-center text-rose-500 text-xs font-medium">{error}</p>}
             </div>
           )}
         </div>
@@ -950,13 +972,17 @@ const UserContext = React.createContext<{
   setExpiryThreshold: (val: number) => void;
   settings: AppSettingsData;
   refreshSettings: () => Promise<void>;
+  notifications: AppNotification[];
+  markNotificationAsRead: (id: string) => void;
 }>({ 
   user: null, 
   profile: null, 
   expiryThreshold: 30, 
   setExpiryThreshold: () => {},
   settings: DEFAULT_SETTINGS,
-  refreshSettings: async () => {}
+  refreshSettings: async () => {},
+  notifications: [],
+  markNotificationAsRead: () => {}
 });
 
 const AuthGuard = ({ children }: { children: React.ReactNode }) => {
@@ -964,6 +990,7 @@ const AuthGuard = ({ children }: { children: React.ReactNode }) => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [settings, setSettings] = useState<AppSettingsData>(DEFAULT_SETTINGS);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [expiryThreshold, setExpiryThreshold] = useState(() => {
     const saved = localStorage.getItem('expiryThreshold');
     return saved ? parseInt(saved, 10) : 30;
@@ -990,6 +1017,49 @@ const AuthGuard = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     refreshSettings();
   }, []);
+
+  // Fetch notifications (mock logic for low stock)
+  useEffect(() => {
+    const fetchNotifications = async (retries = 3) => {
+      try {
+        const res = await fetch('/api/stocks?limit=1000');
+        if (res.ok) {
+          const { data: stocks } = await res.json();
+          const lowStockItems = stocks.filter((s: StockItem) => s.quantity <= (s.minStock || 5));
+          
+          const newNotifications: AppNotification[] = lowStockItems.map((item: StockItem) => ({
+            id: `low-stock-${item.id}`,
+            title: 'Stok Menipis',
+            message: `${item.name} hanya tersisa ${item.quantity} ${item.unit}.`,
+            type: 'warning',
+            timestamp: new Date(),
+            read: false,
+            link: item.location === 'warehouse' ? '/stock/warehouse' : '/stock/lab'
+          }));
+
+          setNotifications(newNotifications);
+        } else {
+          throw new Error(`Server responded with ${res.status}`);
+        }
+      } catch (error) {
+        console.error('Error fetching notifications:', error);
+        if (retries > 0) {
+          console.log(`Retrying fetch notifications... (${retries} retries left)`);
+          setTimeout(() => fetchNotifications(retries - 1), 2000);
+        }
+      }
+    };
+
+    if (user) {
+      fetchNotifications();
+      const interval = setInterval(() => fetchNotifications(), 60000); // Check every minute
+      return () => clearInterval(interval);
+    }
+  }, [user]);
+
+  const markNotificationAsRead = (id: string) => {
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+  };
 
   useEffect(() => {
     localStorage.setItem('expiryThreshold', expiryThreshold.toString());
@@ -1045,7 +1115,16 @@ const AuthGuard = ({ children }: { children: React.ReactNode }) => {
   );
 
   return (
-    <UserContext.Provider value={{ user, profile, expiryThreshold, setExpiryThreshold, settings, refreshSettings }}>
+    <UserContext.Provider value={{ 
+      user, 
+      profile, 
+      expiryThreshold, 
+      setExpiryThreshold, 
+      settings, 
+      refreshSettings,
+      notifications,
+      markNotificationAsRead
+    }}>
       {!user ? <Login /> : children}
     </UserContext.Provider>
   );
@@ -1284,12 +1363,12 @@ const Login = () => {
                 {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Sign In'}
               </button>
 
-              <div className="relative py-4">
+              <div className="relative py-2">
                 <div className="absolute inset-0 flex items-center">
                   <div className="w-full border-t border-slate-200"></div>
                 </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="px-4 bg-white lg:bg-slate-50 text-slate-500">Or continue with</span>
+                <div className="relative flex justify-center text-xs uppercase tracking-widest font-bold">
+                  <span className="px-4 bg-white lg:bg-slate-50 text-slate-400">Alternative Login</span>
                 </div>
               </div>
 
@@ -1297,10 +1376,10 @@ const Login = () => {
                 type="button"
                 onClick={handleGoogleLogin}
                 disabled={loading}
-                className="w-full flex items-center justify-center gap-4 bg-white border border-slate-200 text-slate-700 py-3.5 px-6 rounded-2xl hover:bg-slate-50 hover:border-blue-200 transition-all duration-300 font-bold shadow-sm"
+                className="w-full flex items-center justify-center gap-3 bg-white border border-slate-200 text-slate-600 py-3 px-6 rounded-2xl hover:bg-slate-50 hover:border-slate-300 transition-all duration-300 font-semibold text-sm shadow-sm"
               >
-                <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5" />
-                Sign in with Google
+                <img src="https://www.google.com/favicon.ico" alt="Google" className="w-4 h-4 grayscale opacity-70 group-hover:grayscale-0 group-hover:opacity-100 transition-all" />
+                Continue with Google
               </button>
             </form>
           ) : (
@@ -1401,26 +1480,27 @@ const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (open: boo
       items: labItems,
       id: 'lab'
     },
-    { name: 'Master Data', icon: Database, path: '/master-data', id: 'master_data' },
     { name: 'Stock Lab', icon: Package, path: '/stock/lab', id: 'stock_lab' },
     { name: 'Stock Warehouse', icon: Warehouse, path: '/stock/warehouse', id: 'stock_warehouse' },
     { name: 'Usage Reports', icon: TrendingUp, path: '/reports', id: 'reports' },
     { name: 'Purchasing', icon: ShoppingCart, path: '/purchasing', id: 'purchasing' },
+    { name: 'User Management', icon: Users, path: '/settings?tab=users', id: 'user_management' },
     { name: 'Settings', icon: Settings, path: '/settings', id: 'settings' },
   ];
 
   const allowedMenus = profile ? (profile.permissions && profile.permissions.length > 0 ? profile.permissions : settings.rolePermissions[profile.role] || []) : [];
-  const menuItems = allMenuItems.filter(item => allowedMenus.includes(item.id));
+  const menuItems = allMenuItems.filter(item => allowedMenus.includes(item.id) || (item.id === 'user_management' && allowedMenus.includes('settings')));
 
   return (
     <>
       {/* Mobile Bottom Nav */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-xl border-t border-slate-200 px-2 py-2 flex items-center justify-around shadow-[0_-10px_30px_rgba(0,0,0,0.05)]">
-        {menuItems.slice(0, 4).map((item) => {
-          const isActive = location.pathname === item.path || (item.id === 'lab' && location.pathname.startsWith('/lab/'));
+        {menuItems.filter((item: any) => !item.isSubMenu).slice(0, 4).map((item: any) => {
+          const isActive = location.pathname === item.path;
+          
           return (
             <Link 
-              key={item.path || item.name} 
+              key={item.id || item.name} 
               to={item.path || '#'}
               className="flex-1 flex flex-col items-center gap-1 relative group min-w-0"
             >
@@ -1450,7 +1530,7 @@ const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (open: boo
             <Menu size={20} />
           </div>
           <span className="text-[8px] sm:text-[9px] font-bold uppercase tracking-wider text-center w-full">
-            More
+            Menu
           </span>
         </button>
       </div>
@@ -1492,7 +1572,8 @@ const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (open: boo
           <div className="p-8 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className={cn(
-              "flex items-center justify-center min-w-[40px] min-h-[40px] shadow-lg shadow-blue-500/20 rounded-xl bg-blue-600",
+              "flex items-center justify-center min-w-[40px] min-h-[40px]",
+              settings.appLogo ? "bg-transparent" : "shadow-lg shadow-blue-500/20 rounded-xl bg-blue-600",
             )}>
               {settings.appLogo ? (
                 <img src={settings.appLogo} alt="Logo" className="w-8 h-8 object-contain" />
@@ -1618,19 +1699,26 @@ const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (open: boo
 };
 
 const Topbar = ({ onMenuClick }: { onMenuClick: () => void }) => {
-  const { profile, settings } = React.useContext(UserContext);
+  const { profile, settings, notifications, markNotificationAsRead } = React.useContext(UserContext);
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const notificationRef = useRef<HTMLDivElement>(null);
+
+  const unreadCount = notifications.filter(n => !n.read).length;
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
+        setShowNotifications(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   return (
     <header className="h-20 bg-white/80 backdrop-blur-xl border-b border-slate-200/60 sticky top-0 z-40 px-6 lg:px-10 flex items-center justify-between">
       <div className="flex items-center gap-4 flex-1">
-        <button 
-          onClick={onMenuClick}
-          className="lg:hidden p-2 -ml-2 text-slate-600 hover:bg-slate-100 rounded-xl transition-all"
-        >
-          <Menu size={24} />
-        </button>
-        
         <div className="hidden md:flex items-center gap-3 bg-slate-100/50 border border-slate-200/60 px-4 py-2 rounded-2xl w-full max-w-md group focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
           <Search size={18} className="text-slate-400 group-focus-within:text-blue-500 transition-colors" />
           <input 
@@ -1655,13 +1743,85 @@ const Topbar = ({ onMenuClick }: { onMenuClick: () => void }) => {
           </span>
         </button>
 
-        <button className="p-2.5 text-slate-500 hover:bg-slate-100 rounded-xl transition-all relative group">
-          <Bell size={20} />
-          <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-rose-500 border-2 border-white rounded-full" />
-          <span className="absolute -bottom-10 left-1/2 -translate-x-1/2 px-2 py-1 bg-slate-900 text-white text-[10px] font-bold rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-            Notifications
-          </span>
-        </button>
+        <div className="relative" ref={notificationRef}>
+          <button 
+            onClick={() => setShowNotifications(!showNotifications)}
+            className="p-2.5 text-slate-500 hover:bg-slate-100 rounded-xl transition-all relative group"
+          >
+            <Bell size={20} />
+            {unreadCount > 0 && (
+              <span className="absolute top-2.5 right-2.5 w-4 h-4 bg-rose-500 border-2 border-white rounded-full text-[10px] text-white font-bold flex items-center justify-center">
+                {unreadCount}
+              </span>
+            )}
+            <span className="absolute -bottom-10 left-1/2 -translate-x-1/2 px-2 py-1 bg-slate-900 text-white text-[10px] font-bold rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+              Notifications
+            </span>
+          </button>
+
+          <AnimatePresence>
+            {showNotifications && (
+              <motion.div
+                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden z-50"
+              >
+                <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                  <h3 className="font-bold text-slate-900">Notifications</h3>
+                  <span className="text-[10px] font-black bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                    {unreadCount} New
+                  </span>
+                </div>
+                <div className="max-h-[400px] overflow-y-auto">
+                  {notifications.length > 0 ? (
+                    notifications.map((n) => (
+                      <div 
+                        key={n.id}
+                        onClick={() => markNotificationAsRead(n.id)}
+                        className={cn(
+                          "p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors cursor-pointer relative",
+                          !n.read && "bg-blue-50/30"
+                        )}
+                      >
+                        {!n.read && <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500" />}
+                        <div className="flex gap-3">
+                          <div className={cn(
+                            "w-8 h-8 rounded-lg flex items-center justify-center shrink-0",
+                            n.type === 'warning' ? "bg-amber-100 text-amber-600" : "bg-blue-100 text-blue-600"
+                          )}>
+                            {n.type === 'warning' ? <AlertTriangle size={16} /> : <Info size={16} />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-slate-900 leading-tight mb-1">{n.title}</p>
+                            <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">{n.message}</p>
+                            <p className="text-[10px] text-slate-400 mt-2 font-medium">
+                              {new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="p-8 text-center">
+                      <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <Bell size={20} className="text-slate-400" />
+                      </div>
+                      <p className="text-sm font-medium text-slate-500">No new notifications</p>
+                    </div>
+                  )}
+                </div>
+                {notifications.length > 0 && (
+                  <div className="p-3 bg-slate-50 border-t border-slate-100 text-center">
+                    <button className="text-[11px] font-bold text-blue-600 hover:underline">
+                      View All Activity
+                    </button>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
 
         <div className="h-8 w-[1px] bg-slate-200 mx-2 hidden sm:block" />
 
@@ -1687,8 +1847,9 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchData = async () => {
+  const fetchData = async (retries = 3) => {
     try {
+      setLoading(true);
       setError(null);
       const endpoints = [
         { name: 'Stocks', url: '/api/stocks?limit=1000' },
@@ -1708,9 +1869,14 @@ const Dashboard = () => {
       setRequisitions(results[1].data || []);
       setDailyUses(results[2].data || []);
       setSamples(results[3].data || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching dashboard data:', error);
-      setError('Gagal mengambil data dashboard');
+      if (retries > 0) {
+        console.log(`Retrying fetch dashboard data... (${retries} retries left)`);
+        setTimeout(() => fetchData(retries - 1), 2000);
+      } else {
+        setError(error.message || 'Gagal mengambil data dashboard');
+      }
     } finally {
       setLoading(false);
     }
@@ -2848,9 +3014,9 @@ const WarehouseStockView = () => {
       } else {
         await handleApiError(res, 'Warehouse Stock');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching stock:', error);
-      setError('Gagal terhubung ke server. Silakan periksa koneksi internet Anda.');
+      setError(error.message || 'Gagal terhubung ke server. Silakan periksa koneksi internet Anda.');
     } finally {
       setLoading(false);
     }
@@ -3044,30 +3210,30 @@ const WarehouseStockView = () => {
         const ws = wb.Sheets[wsname];
         const data = XLSX.utils.sheet_to_json(ws);
 
-        for (const row of data as any[]) {
-          const item = {
-            name: row['Nama Bahan'],
-            materialCode: row['Kode Bahan'],
-            brand: row['Merek'],
-            lotNumber: row['Nomor LOT'],
-            quantity: parseFloat(row['Jumlah Stok']),
-            minStock: parseFloat(row['Batas Stok Min']),
-            unit: row['Satuan (Pack/Pcs/Botol)'],
-            contentUnit: row['Satuan Per Kemasan (Gram/ML/Pcs)'],
-            arrivalDate: row['Tanggal Kedatangan (YYYY-MM-DD)'],
-            expiryDate: row['Tanggal Expired (YYYY-MM-DD)'],
-            category: 'Bahan',
-            location: 'warehouse'
-          };
+        const itemsToCreate = (data as any[]).map(row => ({
+          name: row['Nama Bahan'],
+          materialCode: row['Kode Bahan'],
+          brand: row['Merek'],
+          lotNumber: row['Nomor LOT'],
+          quantity: parseFloat(row['Jumlah Stok']),
+          minStock: parseFloat(row['Batas Stok Min']),
+          unit: row['Satuan (Pack/Pcs/Botol)'],
+          contentUnit: row['Satuan Per Kemasan (Gram/ML/Pcs)'],
+          arrivalDate: row['Tanggal Kedatangan (YYYY-MM-DD)'],
+          expiryDate: row['Tanggal Expired (YYYY-MM-DD)'],
+          category: 'Bahan',
+          location: 'warehouse'
+        })).filter(item => item.name && !isNaN(item.quantity));
 
-          if (item.name && !isNaN(item.quantity)) {
-            await fetch('/api/stocks', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(item),
-            });
-          }
+        if (itemsToCreate.length > 0) {
+          const res = await fetch('/api/stocks/bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(itemsToCreate),
+          });
+          if (!res.ok) throw new Error('Gagal menyimpan data ke server');
         }
+
         fetchStock();
         alert('Upload berhasil!');
       } catch (error) {
@@ -3195,6 +3361,25 @@ const WarehouseStockView = () => {
           >
             <History size={18} /> Logbook
           </button>
+          <button 
+            onClick={downloadTemplate}
+            className="bg-white border border-slate-200 text-slate-600 px-5 py-2.5 rounded-xl flex items-center gap-2 hover:bg-slate-50 transition-all font-bold text-sm shadow-sm"
+          >
+            <Download size={18} /> Template
+          </button>
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            className="bg-white border border-slate-200 text-slate-600 px-5 py-2.5 rounded-xl flex items-center gap-2 hover:bg-slate-50 transition-all font-bold text-sm shadow-sm"
+          >
+            <FileUp size={18} /> Import Excel
+          </button>
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handleFileUpload} 
+            className="hidden" 
+            accept=".xlsx, .xls" 
+          />
           <button 
             onClick={exportToExcel}
             className="bg-white border border-slate-200 text-slate-600 px-5 py-2.5 rounded-xl flex items-center gap-2 hover:bg-slate-50 transition-all font-bold text-sm shadow-sm"
@@ -3716,9 +3901,9 @@ const PurchasingView = () => {
       } else {
         await handleApiError(res, 'Purchasing Requisitions');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching requisitions:', error);
-      setError('Gagal terhubung ke server. Silakan periksa koneksi internet Anda.');
+      setError(error.message || 'Gagal terhubung ke server. Silakan periksa koneksi internet Anda.');
     } finally {
       setLoading(false);
     }
@@ -3919,32 +4104,6 @@ const PurchasingView = () => {
                         </td>
                         <td className="px-6 py-4">
                           <div className="font-bold text-slate-900 leading-tight">{req.reagentName}</div>
-                          {req.purchasingNote && (
-                            <motion.div 
-                              whileHover={{ scale: 1.05, x: 5, zIndex: 50 }}
-                              transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                              className="mt-1.5 p-2 bg-blue-50 rounded-lg border border-blue-100 flex items-start gap-2 max-w-[250px] cursor-help shadow-sm hover:shadow-md relative"
-                            >
-                              <MessageSquare size={12} className="text-blue-500 shrink-0 mt-0.5" />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Catatan Purchasing:</p>
-                                <p className="text-[10px] text-blue-500 italic leading-relaxed break-words">{req.purchasingNote}</p>
-                              </div>
-                            </motion.div>
-                          )}
-                          {req.status === 'lab_rejected' && (
-                            <motion.div 
-                              whileHover={{ scale: 1.05, x: 5, zIndex: 50 }}
-                              transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                              className="mt-1.5 p-2 bg-rose-50 rounded-lg border border-rose-100 flex items-start gap-2 max-w-[250px] cursor-help shadow-sm hover:shadow-md relative"
-                            >
-                              <AlertCircle size={12} className="text-rose-500 shrink-0 mt-0.5" />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[10px] font-bold text-rose-600 uppercase tracking-wider">Alasan Penolakan Lab:</p>
-                                <p className="text-[10px] text-rose-500 italic leading-relaxed break-words">{req.rejectionReason || 'Tidak ada alasan'}</p>
-                              </div>
-                            </motion.div>
-                          )}
                         </td>
                         <td className="px-6 py-4 text-center">
                           <div className="text-sm font-black text-blue-600">{req.quantity}</div>
@@ -3959,7 +4118,35 @@ const PurchasingView = () => {
                           </div>
                         </td>
                         <td className="px-6 py-4">
-                          {getStatusBadge(req.status)}
+                          <div className="flex flex-col gap-2">
+                            <div>{getStatusBadge(req.status)}</div>
+                            {req.purchasingNote && (
+                              <motion.div 
+                                whileHover={{ scale: 1.05, x: 5, zIndex: 50 }}
+                                transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                                className="p-2 bg-blue-50 rounded-lg border border-blue-100 flex items-start gap-2 max-w-[200px] cursor-help shadow-sm hover:shadow-md relative"
+                              >
+                                <MessageSquare size={12} className="text-blue-500 shrink-0 mt-0.5" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Catatan Purchasing:</p>
+                                  <p className="text-[10px] text-blue-500 italic leading-relaxed break-words">{req.purchasingNote}</p>
+                                </div>
+                              </motion.div>
+                            )}
+                            {req.status === 'lab_rejected' && (
+                              <motion.div 
+                                whileHover={{ scale: 1.05, x: 5, zIndex: 50 }}
+                                transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                                className="p-2 bg-rose-50 rounded-lg border border-rose-100 flex items-start gap-2 max-w-[200px] cursor-help shadow-sm hover:shadow-md relative"
+                              >
+                                <AlertCircle size={12} className="text-rose-500 shrink-0 mt-0.5" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-[10px] font-bold text-rose-600 uppercase tracking-wider">Alasan Penolakan Lab:</p>
+                                  <p className="text-[10px] text-rose-500 italic leading-relaxed break-words">{req.rejectionReason || 'Tidak ada alasan'}</p>
+                                </div>
+                              </motion.div>
+                            )}
+                          </div>
                         </td>
                         <td className="px-6 py-4 text-right">
                           <div className="flex items-center justify-end gap-2">
@@ -4274,8 +4461,8 @@ const LabModule = ({ type, title }: { type: LabSample['type'], title: string }) 
       } else {
         await fetchReagentData();
       }
-    } catch (err) {
-      setError('Gagal terhubung ke server. Silakan periksa koneksi internet Anda.');
+    } catch (err: any) {
+      setError(err.message || 'Gagal terhubung ke server. Silakan periksa koneksi internet Anda.');
     } finally {
       setIsInitialLoading(false);
     }
@@ -5781,8 +5968,12 @@ const ReportsView = () => {
 
 const SettingsView = () => {
   const { profile, expiryThreshold, setExpiryThreshold, settings, refreshSettings } = React.useContext(UserContext);
+  const location = useLocation();
+  const queryParams = new URLSearchParams(location.search);
+  const initialTab = (queryParams.get('tab') as any) || 'users';
+  
   const [users, setUsers] = useState<UserProfile[]>([]);
-  const [activeTab, setActiveTab] = useState<'users' | 'app' | 'tema' | 'general' | 'system'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'app' | 'tema' | 'general' | 'system'>(initialTab);
   const [loading, setLoading] = useState(false);
   const [systemActionLoading, setSystemActionLoading] = useState(false);
   
@@ -5795,9 +5986,17 @@ const SettingsView = () => {
     setAppForm(settings);
   }, [settings]);
 
+  useEffect(() => {
+    const tab = queryParams.get('tab');
+    if (tab && ['users', 'app', 'tema', 'general', 'system'].includes(tab)) {
+      setActiveTab(tab as any);
+    }
+  }, [location.search]);
+
   const fetchUsers = async () => {
+    if (!profile?.uid) return;
     try {
-      const res = await fetch('/api/users');
+      const res = await fetch(`/api/users?requesterUid=${profile.uid}`);
       if (res.ok) setUsers(await res.json());
     } catch (error) {
       console.error('Error fetching users:', error);
@@ -5806,9 +6005,27 @@ const SettingsView = () => {
 
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!newUserForm.email || !newUserForm.password || !newUserForm.displayName) {
+      alert('Silakan isi semua data (Email, Nama, Password).');
+      return;
+    }
+
+    if (newUserForm.password.length < 6) {
+      alert('Password minimal 6 karakter.');
+      return;
+    }
+
     setLoading(true);
+    console.log('Memulai pembuatan user baru:', newUserForm.email);
+
     try {
-      // 1. Create user in Firebase Auth using a secondary instance to avoid logging out current user
+      // 1. Validasi Config
+      if (!firebaseConfig || !firebaseConfig.apiKey) {
+        throw new Error('Konfigurasi Firebase (API Key) tidak ditemukan. Periksa file firebase-applet-config.json');
+      }
+
+      // 2. Create user in Firebase Auth using a secondary instance
       const existingApps = getApps();
       let secondaryApp = existingApps.find(app => app.name === 'secondary');
       
@@ -5818,10 +6035,13 @@ const SettingsView = () => {
       
       const secondaryAuth = getAuth(secondaryApp);
       
+      console.log('Mendaftarkan ke Firebase Auth...');
       const userCredential = await createUserWithEmailAndPassword(secondaryAuth, newUserForm.email, newUserForm.password);
       const uid = userCredential.user.uid;
+      console.log('Berhasil di Firebase Auth, UID:', uid);
       
-      // 2. Sync with backend
+      // 3. Sync with backend
+      console.log('Sinkronisasi ke database backend...');
       const res = await fetch('/api/auth/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -5829,27 +6049,36 @@ const SettingsView = () => {
           uid,
           email: newUserForm.email,
           displayName: newUserForm.displayName,
-          role: newUserForm.role
+          role: newUserForm.role,
+          requesterUid: profile?.uid
         }),
       });
 
       if (res.ok) {
+        console.log('Sinkronisasi berhasil.');
         fetchUsers();
         setNewUserForm({ email: '', displayName: '', role: 'analyst', password: '' });
-        alert('User created successfully!');
+        alert('User berhasil dibuat!');
       } else {
         const err = await res.json();
-        alert('Failed to sync user profile: ' + err.error);
+        console.error('Gagal sinkronisasi:', err);
+        alert('Gagal sinkronisasi profil: ' + (err.error || 'Unknown error'));
       }
 
-      // 3. Cleanup secondary app
+      // 4. Cleanup secondary app
       await deleteApp(secondaryApp);
     } catch (error: any) {
-      console.error('Error adding user:', error);
+      console.error('Error detail saat menambah user:', error);
       if (error.code === 'auth/operation-not-allowed') {
-        alert('Error: Email/Password sign-in is not enabled in Firebase Console. Please enable it in Authentication > Sign-in method.');
+        alert('PENTING: Fitur Email/Password belum aktif di Firebase Console. \n\nSilakan buka Firebase Console > Authentication > Sign-in method dan aktifkan "Email/Password".');
+      } else if (error.code === 'auth/email-already-in-use') {
+        alert('Email ini sudah terdaftar. Silakan gunakan email lain atau reset password akun tersebut.');
+      } else if (error.code === 'auth/weak-password') {
+        alert('Password terlalu lemah. Gunakan minimal 6 karakter.');
+      } else if (error.code === 'auth/invalid-email') {
+        alert('Format email tidak valid.');
       } else {
-        alert('Error creating user: ' + error.message);
+        alert('Gagal membuat user: ' + (error.message || 'Terjadi kesalahan sistem'));
       }
     } finally {
       setLoading(false);
@@ -5859,7 +6088,7 @@ const SettingsView = () => {
   const handleDeleteUser = async (uid: string) => {
     if (!confirm('Are you sure you want to delete this user?')) return;
     try {
-      const res = await fetch(`/api/users/${uid}`, { method: 'DELETE' });
+      const res = await fetch(`/api/users/${uid}?requesterUid=${profile?.uid}`, { method: 'DELETE' });
       if (res.ok) fetchUsers();
     } catch (error) {
       console.error('Error deleting user:', error);
@@ -5871,7 +6100,7 @@ const SettingsView = () => {
       const res = await fetch(`/api/users/${uid}/role`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role }),
+        body: JSON.stringify({ role, requesterUid: profile?.uid }),
       });
       if (res.ok) fetchUsers();
     } catch (error) {
@@ -5884,7 +6113,7 @@ const SettingsView = () => {
       const res = await fetch(`/api/users/${uid}/permissions`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ permissions }),
+        body: JSON.stringify({ permissions, requesterUid: profile?.uid }),
       });
       if (res.ok) fetchUsers();
     } catch (error) {
@@ -5898,7 +6127,7 @@ const SettingsView = () => {
       const res = await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(appForm),
+        body: JSON.stringify({ updates: appForm, requesterUid: profile?.uid }),
       });
       if (res.ok) {
         await refreshSettings();
@@ -5957,36 +6186,44 @@ const SettingsView = () => {
         </div>
       </div>
 
-      <div className="flex gap-2 mb-8 bg-slate-100 p-1 rounded-2xl w-fit">
+      <div className="flex flex-wrap gap-2 mb-8 bg-slate-100 p-1 rounded-2xl w-fit">
         <button 
           onClick={() => setActiveTab('users')}
-          className={`px-6 py-2.5 rounded-xl font-medium transition-all ${activeTab === 'users' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+          className={`px-6 py-2.5 rounded-xl font-medium transition-all flex items-center gap-2 ${activeTab === 'users' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
         >
+          <Users size={18} />
           User Management
+          <span className="text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-tighter">Admin</span>
         </button>
         <button 
           onClick={() => setActiveTab('app')}
-          className={`px-6 py-2.5 rounded-xl font-medium transition-all ${activeTab === 'app' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+          className={`px-6 py-2.5 rounded-xl font-medium transition-all flex items-center gap-2 ${activeTab === 'app' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
         >
+          <LayoutIcon size={18} />
           App Configuration
+          <span className="text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-tighter">Admin</span>
         </button>
         <button 
           onClick={() => setActiveTab('tema')}
-          className={`px-6 py-2.5 rounded-xl font-medium transition-all ${activeTab === 'tema' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+          className={`px-6 py-2.5 rounded-xl font-medium transition-all flex items-center gap-2 ${activeTab === 'tema' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
         >
+          <Palette size={18} />
           Tema
         </button>
         <button 
           onClick={() => setActiveTab('general')}
-          className={`px-6 py-2.5 rounded-xl font-medium transition-all ${activeTab === 'general' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+          className={`px-6 py-2.5 rounded-xl font-medium transition-all flex items-center gap-2 ${activeTab === 'general' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
         >
+          <SettingsIcon size={18} />
           General
         </button>
         <button 
           onClick={() => setActiveTab('system')}
-          className={`px-6 py-2.5 rounded-xl font-medium transition-all ${activeTab === 'system' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+          className={`px-6 py-2.5 rounded-xl font-medium transition-all flex items-center gap-2 ${activeTab === 'system' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
         >
+          <ShieldAlert size={18} />
           System Management
+          <span className="text-[10px] bg-rose-100 text-rose-600 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-tighter">Admin</span>
         </button>
       </div>
 
@@ -6260,8 +6497,15 @@ const SettingsView = () => {
                   )}
                   <div className="relative z-10 p-6 space-y-8">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20">
-                        <Microscope className="text-white" size={20} />
+                      <div className={cn(
+                        "w-10 h-10 flex items-center justify-center",
+                        appForm.appLogo ? "bg-transparent" : "bg-blue-600 rounded-xl shadow-lg shadow-blue-500/20"
+                      )}>
+                        {appForm.appLogo ? (
+                          <img src={appForm.appLogo} alt="Logo" className="w-full h-full object-contain" />
+                        ) : (
+                          <Microscope className="text-white" size={20} />
+                        )}
                       </div>
                       <div className="flex flex-col">
                         <div className="h-3 w-24 bg-slate-200 rounded-full mb-1" />
@@ -6311,7 +6555,10 @@ const SettingsView = () => {
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Logo</label>
                   <div className="flex items-center gap-4">
-                    <div className="w-16 h-16 bg-slate-100 rounded-xl flex items-center justify-center border border-slate-200 overflow-hidden">
+                    <div className={cn(
+                      "w-16 h-16 rounded-xl flex items-center justify-center border border-slate-200 overflow-hidden",
+                      appForm.appLogo ? "bg-transparent" : "bg-slate-100"
+                    )}>
                       {appForm.appLogo ? (
                         <img src={appForm.appLogo} alt="Logo Preview" className="w-full h-full object-contain" />
                       ) : (
